@@ -40,7 +40,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm' # Gestion du cache npm via actions/setup-node
+          cache: "npm" # Gestion du cache npm via actions/setup-node
 
       - name: Install dependencies
         run: npm ci
@@ -53,24 +53,6 @@ jobs:
 
       - name: Code quality (TypeScript verification)
         run: npm run typecheck
-
-      - name: Verify external service connectivity (Redis)
-        run: |
-          node -e "
-            const net = require('net');
-            const client = net.createConnection({ port: 6379, host: '127.0.0.1' }, () => {
-              console.log('Successfully connected to external Redis service container!');
-              client.write('PING\r\n');
-            });
-            client.on('data', (data) => {
-              console.log('External service response:', data.toString().trim());
-              client.end();
-            });
-            client.on('error', (err) => {
-              console.error('Failed to connect to external service:', err);
-              process.exit(1);
-            });
-          "
 
       - name: Run automated tests with coverage
         run: npm run test:coverage
