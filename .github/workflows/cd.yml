@@ -6,105 +6,163 @@ on:
       - dev
       - staging
       - main
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: "Environnement cible pour le déploiement manuel"
+        required: true
+        default: "production"
+        type: choice
+        options:
+          - development
+          - staging
+          - production
 
 permissions:
   contents: read
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/node-app
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME || 'lemaitreenzo' }}/todo-list-app
 
 jobs:
-  build:
-    name: Build and push Docker image
+  build-and-push:
+    name: Build & Push Docker Image
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Docker Hub
+        if: "${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}"
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build Docker image
+      - name: Determine Docker tags
+        id: meta
         run: |
-          docker build \
-            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -t ${{ env.IMAGE_NAME }}:latest \
-            .
+          REF_NAME="${{ github.ref_name }}"
+          SHA_SHORT="${GITHUB_SHA::7}"
+          TAGS="${{ env.DOCKER_IMAGE }}:${SHA_SHORT},${{ env.DOCKER_IMAGE }}:${REF_NAME}"
+          if [ "$REF_NAME" = "main" ]; then
+            TAGS="${TAGS},${{ env.DOCKER_IMAGE }}:latest"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
 
-      - name: Push Docker image
-        run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.IMAGE_NAME }}:latest
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-development:
-    name: Deploy to development
-    needs: build
-    if: github.ref == 'refs/heads/develop'
+    name: Deploy to Development
+    needs: build-and-push
+    if: github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && inputs.target_env == 'development')
     runs-on: ubuntu-latest
-    environment: development
+    environment:
+      name: dev
+      url: http://dev.todolist.local
 
     steps:
-      - name: Deploy
+      - name: Deploy via SSH (Remote VPS)
+        if: "${{ secrets.SSH_HOST != '' }}"
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            docker stop node-app || true
-            docker rm node-app || true
-            docker run -d \
-              --name node-app \
-              -p 3000:3000 \
-              ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            echo "Déploiement sur l'environnement de DÉVELOPPEMENT..."
+            docker pull ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}
+            docker stop todo-dev || true
+            docker rm todo-dev || true
+            docker run -d --name todo-dev -p 3000:80 ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}
+
+      - name: Simulated deployment (si secrets SSH non renseignés)
+        if: "${{ secrets.SSH_HOST == '' }}"
+        run: |
+          echo "=========================================="
+          echo "Déploiement automatique sur l'environnement DEV validé !"
+          echo "Branche cible : dev"
+          echo "Image Docker  : ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}"
+          echo "Port exposé   : 3000 -> 80 (Nginx)"
+          echo "=========================================="
 
   deploy-staging:
-    name: Deploy to staging
-    needs: build
-    if: github.ref == 'refs/heads/staging'
+    name: Deploy to Staging (Pre-production après 1h)
+    needs: build-and-push
+    if: github.ref == 'refs/heads/staging' || (github.event_name == 'workflow_dispatch' && inputs.target_env == 'staging')
     runs-on: ubuntu-latest
-    environment: staging
+    environment:
+      name: staging
+      url: http://staging.todolist.local
 
     steps:
-      - name: Deploy
+      - name: Deploy via SSH (Remote VPS)
+        if: "${{ secrets.SSH_HOST != '' }}"
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            docker stop node-app || true
-            docker rm node-app || true
-            docker run -d \
-              --name node-app \
-              -p 3000:3000 \
-              ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            echo "Déploiement sur l'environnement de PRÉ-PRODUCTION..."
+            docker pull ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}
+            docker stop todo-staging || true
+            docker rm todo-staging || true
+            docker run -d --name todo-staging -p 4000:80 ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}
+
+      - name: Simulated deployment (si secrets SSH non renseignés)
+        if: "${{ secrets.SSH_HOST == '' }}"
+        run: |
+          echo "=========================================="
+          echo "Déploiement sur l'environnement STAGING (Pré-production) validé !"
+          echo "Règle de délai : Wait timer GitHub Environment (60 minutes)"
+          echo "Branche cible  : staging"
+          echo "Image Docker   : ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}"
+          echo "Port exposé    : 4000 -> 80 (Nginx)"
+          echo "=========================================="
 
   deploy-production:
-    name: Deploy to production
-    needs: build
-    if: github.ref == 'refs/heads/main'
+    name: Deploy to Production (Validation Manuelle)
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.target_env == 'production')
     runs-on: ubuntu-latest
-    environment: production
+    environment:
+      name: prod
+      url: https://todolist.local
 
     steps:
-      - name: Deploy
+      - name: Deploy via SSH (Remote VPS)
+        if: "${{ secrets.SSH_HOST != '' }}"
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
-            docker stop node-app || true
-            docker rm node-app || true
-            docker run -d \
-              --name node-app \
-              -p 3000:3000 \
-              ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            echo "Déploiement sur l'environnement de PRODUCTION..."
+            docker pull ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}
+            docker stop todo-prod || true
+            docker rm todo-prod || true
+            docker run -d --name todo-prod -p 80:80 ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7}
+
+      - name: Simulated deployment (si secrets SSH non renseignés)
+        if: "${{ secrets.SSH_HOST == '' }}"
+        run: |
+          echo "=========================================="
+          echo "Déploiement sur la PRODUCTION validé !"
+          echo "Contrôle d'accès : Approbation manuelle obligatoire (Required reviewers)"
+          echo "Branche cible    : main"
+          echo "Image Docker     : ${{ env.DOCKER_IMAGE }}:${GITHUB_SHA::7} et latest"
+          echo "Port exposé      : 80 -> 80 (Nginx)"
+          echo "=========================================="

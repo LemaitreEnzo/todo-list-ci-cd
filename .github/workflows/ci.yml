@@ -4,45 +4,92 @@ on:
   push:
     branches:
       - dev
-
+      - staging
+      - main
   pull_request:
     branches:
       - dev
+      - staging
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  quality:
-    name: Code quality & tests
+  ci-pipeline:
+    name: Continuous Integration (Audit, Lint, Test & Build)
     runs-on: ubuntu-latest
 
+    # Service externe : Conteneur Redis pour démontrer l'utilisation des services dans GitHub Actions
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js with cache
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+          cache: 'npm' # Gestion du cache npm via actions/setup-node
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit dependencies
+      - name: Audit dependencies (Security)
         run: npm audit --audit-level=high
 
-      - name: Lint
+      - name: Code quality (Linting)
         run: npm run lint
 
-      - name: Tests
-        run: npm test -- --coverage
+      - name: Code quality (TypeScript verification)
+        run: npm run typecheck
 
-      - name: Upload coverage artifact
+      - name: Verify external service connectivity (Redis)
+        run: |
+          node -e "
+            const net = require('net');
+            const client = net.createConnection({ port: 6379, host: '127.0.0.1' }, () => {
+              console.log('Successfully connected to external Redis service container!');
+              client.write('PING\r\n');
+            });
+            client.on('data', (data) => {
+              console.log('External service response:', data.toString().trim());
+              client.end();
+            });
+            client.on('error', (err) => {
+              console.error('Failed to connect to external service:', err);
+              process.exit(1);
+            });
+          "
+
+      - name: Run automated tests with coverage
+        run: npm run test:coverage
+
+      - name: Build application
+        run: npm run build
+
+      - name: Upload coverage report artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage/
+          retention-days: 7
+
+      - name: Upload production build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-build
+          path: dist/
           retention-days: 7
