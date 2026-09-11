@@ -5,6 +5,8 @@
 
 > Projet de TP : Création, test, conteneurisation et déploiement continu d'une application Node.js / React avec GitHub Actions.
 
+GROUPE 2: LEMAITRE Enzo et DESCORSIERS Nicolas
+
 ---
 
 ## 📌 Informations du Projet
@@ -45,25 +47,25 @@ flowchart TD
 
 Déclenché à chaque `push` et `pull_request` sur les branches `dev`, `staging` et `main`.
 
-| Élément | Choix technique & Justification |
-| :--- | :--- |
-| **Gestion du cache** | `actions/setup-node@v4` avec `cache: 'npm'` pour réutiliser les dépendances téléchargées et accélérer l'exécution du pipeline. |
-| **Audit des dépendances** | `npm audit --audit-level=high` pour détecter et bloquer les vulnérabilités de sécurité critiques dans l'arbre de dépendances. |
-| **Qualité du code** | `npm run lint` (ESLint 10) pour l'analyse statique et `npm run typecheck` (`tsc -b`) pour la sécurité du typage. |
-| **Service externe** | Conteneur de service **Redis** (`redis:alpine`) provisionné sur le port `6379` avec healthcheck et test de connexion réseau via Node.js. |
-| **Tests automatisés** | Exécution avec **Vitest** et React Testing Library (`npm run test:coverage`), garantissant la non-régression et mesurant la couverture de code. |
-| **Création d'artefacts** | `actions/upload-artifact@v4` publiant le rapport de couverture (`coverage/`) et le livrable de production (`dist/`), conservés 7 jours. |
+| Élément                   | Choix technique & Justification                                                                                                                 |
+| :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Gestion du cache**      | `actions/setup-node@v4` avec `cache: 'npm'` pour réutiliser les dépendances téléchargées et accélérer l'exécution du pipeline.                  |
+| **Audit des dépendances** | `npm audit --audit-level=high` pour détecter et bloquer les vulnérabilités de sécurité critiques dans l'arbre de dépendances.                   |
+| **Qualité du code**       | `npm run lint` (ESLint 10) pour l'analyse statique et `npm run typecheck` (`tsc -b`) pour la sécurité du typage.                                |
+| **Service externe**       | Conteneur de service **Redis** (`redis:alpine`) provisionné sur le port `6379` avec healthcheck et test de connexion réseau via Node.js.        |
+| **Tests automatisés**     | Exécution avec **Vitest** et React Testing Library (`npm run test:coverage`), garantissant la non-régression et mesurant la couverture de code. |
+| **Création d'artefacts**  | `actions/upload-artifact@v4` publiant le rapport de couverture (`coverage/`) et le livrable de production (`dist/`), conservés 7 jours.         |
 
 ### 2. Déploiement Continu (CD) - `cd.yml`
 
 Déclenché lors des `push` sur les branches de versionnement ou manuellement via `workflow_dispatch`.
 
-| Environnement | Branche cible | Mécanisme de Déploiement & Règle de protection |
-| :--- | :--- | :--- |
-| **Build Docker** | `dev`, `staging`, `main` | Image multi-stage (Node 22 build -> Nginx Alpine). Push sur **Docker Hub** avec tags (`commit SHA`, `nom de branche`, et `latest` sur `main`) et cache de layers GitHub Actions (`gha`). |
-| **Développement** | `dev` | Déploiement automatique continu via conteneur Docker. |
-| **Pré-production** | `staging` | **Déploiement différé après 1 heure**, configuré nativement via la règle **Wait timer (60 minutes)** de l'environnement GitHub `staging`. |
-| **Production** | `main` | **Déploiement manuel contrôlé**, protégé par la règle **Required reviewers** de l'environnement GitHub `production` (exige une validation humaine avant déclenchement). |
+| Environnement      | Branche cible            | Mécanisme de Déploiement & Règle de protection                                                                                                                                           |
+| :----------------- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Build Docker**   | `dev`, `staging`, `main` | Image multi-stage (Node 22 build -> Nginx Alpine). Push sur **Docker Hub** avec tags (`commit SHA`, `nom de branche`, et `latest` sur `main`) et cache de layers GitHub Actions (`gha`). |
+| **Développement**  | `dev`                    | Déploiement automatique continu via conteneur Docker.                                                                                                                                    |
+| **Pré-production** | `staging`                | **Déploiement différé après 1 heure**, configuré nativement via la règle **Wait timer (60 minutes)** de l'environnement GitHub `staging`.                                                |
+| **Production**     | `main`                   | **Déploiement manuel contrôlé**, protégé par la règle **Required reviewers** de l'environnement GitHub `production` (exige une validation humaine avant déclenchement).                  |
 
 ---
 
@@ -73,10 +75,10 @@ Déclenché lors des `push` sur les branches de versionnement ou manuellement vi
 
 - `DOCKERHUB_USERNAME` : Nom d'utilisateur Docker Hub.
 - `DOCKERHUB_TOKEN` : Token d'accès Docker Hub (avec droits `read/write`).
-- `SSH_HOST` *(optionnel)* : IP ou nom d'hôte du serveur distant.
-- `SSH_USER` *(optionnel)* : Utilisateur SSH du serveur.
-- `SSH_PRIVATE_KEY` *(optionnel)* : Clé privée SSH pour le déploiement automatisé.
-*(Note : Si les secrets SSH ne sont pas renseignés, le workflow exécute une étape de simulation documentée sans échouer).*
+- `SSH_HOST` _(optionnel)_ : IP ou nom d'hôte du serveur distant.
+- `SSH_USER` _(optionnel)_ : Utilisateur SSH du serveur.
+- `SSH_PRIVATE_KEY` _(optionnel)_ : Clé privée SSH pour le déploiement automatisé.
+  _(Note : Si les secrets SSH ne sont pas renseignés, le workflow exécute une étape de simulation documentée sans échouer)._
 
 ### 2. Environnements GitHub (`Settings > Environments`)
 
@@ -95,9 +97,9 @@ Pour répondre à l'exigence de démonstration du TP :
 1. **Provoquer une régression volontaire** :
    Dans `src/App.test.tsx`, modifier par exemple :
    ```typescript
-   expect(screen.getByText(/Todo List CI\/CD/i)).toBeInTheDocument()
+   expect(screen.getByText(/Todo List CI\/CD/i)).toBeInTheDocument();
    // Remplacer par :
-   expect(screen.getByText('Titre Inexistant')).toBeInTheDocument()
+   expect(screen.getByText("Titre Inexistant")).toBeInTheDocument();
    ```
 2. **Pousser la modification** :
    ```bash
